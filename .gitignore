@@ -44,3 +44,5 @@ cmake_modules/
 cmake-build-debug/
 
 *.pyc
+
+.vscode/
