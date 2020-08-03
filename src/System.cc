@@ -343,10 +343,16 @@ cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const doub
     return Tcw;
 }
 
+/**
+ * monocular tracking
+ * im : image matrix
+ * timestamp : image frame timestamp
+ * vImuMeas : imu accelerometer, gyroscope x/y/z values
+ * filename : file path + name
+ */
 cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename)
 {
-    if(mSensor!=MONOCULAR && mSensor!=IMU_MONOCULAR)
-    {
+    if(mSensor != MONOCULAR && mSensor != IMU_MONOCULAR) {
         cerr << "ERROR: you called TrackMonocular but input sensor was not set to Monocular nor Monocular-Inertial." << endl;
         exit(-1);
     }
@@ -354,21 +360,18 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp, const
     // Check mode change
     {
         unique_lock<mutex> lock(mMutexMode);
-        if(mbActivateLocalizationMode)
-        {
+        if(mbActivateLocalizationMode) {
             mpLocalMapper->RequestStop();
 
             // Wait until Local Mapping has effectively stopped
-            while(!mpLocalMapper->isStopped())
-            {
+            while(!mpLocalMapper->isStopped()) {
                 usleep(1000);
             }
 
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
         }
-        if(mbDeactivateLocalizationMode)
-        {
+        if(mbDeactivateLocalizationMode) {
             mpTracker->InformOnlyTracking(false);
             mpLocalMapper->Release();
             mbDeactivateLocalizationMode = false;
@@ -378,24 +381,25 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp, const
     // Check reset
     {
         unique_lock<mutex> lock(mMutexReset);
-        if(mbReset)
-        {
+        if(mbReset) {
             mpTracker->Reset();
             mbReset = false;
             mbResetActiveMap = false;
-        }
-        else if(mbResetActiveMap)
-        {
+        } else if(mbResetActiveMap) {
             cout << "SYSTEM-> Reseting active map in monocular case" << endl;
             mpTracker->ResetActiveMap();
             mbResetActiveMap = false;
         }
     }
 
-    if (mSensor == System::IMU_MONOCULAR)
-        for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
+    // imu value를 mlQueueImuData 큐에 넣는다.
+    if (mSensor == System::IMU_MONOCULAR) {
+        for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++) {
             mpTracker->GrabImuData(vImuMeas[i_imu]);
+        }
+    }
 
+    // frame set 후, track() 실행.
     cv::Mat Tcw = mpTracker->GrabImageMonocular(im,timestamp,filename);
 
     /*if(mpLocalMapper->mbNewInit)

@@ -471,42 +471,43 @@ cv::Mat Tracking::GrabImageRGBD(const cv::Mat &imRGB,const cv::Mat &imD, const d
     return mCurrentFrame.mTcw.clone();
 }
 
-
-cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp, string filename)
-{
+/**
+ * grab(붙잡다)
+ * im : frame image
+ * timestampe : frame timestamp
+ * filename : file path + name
+ */
+cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp, string filename) {
     mImGray = im;
 
-    if(mImGray.channels()==3)
-    {
+    //image를 gray로 변환한다.
+    if(mImGray.channels() == 3) { // RGB 등 ... 3채널인 경우.
         if(mbRGB)
             cvtColor(mImGray,mImGray,CV_RGB2GRAY);
         else
             cvtColor(mImGray,mImGray,CV_BGR2GRAY);
-    }
-    else if(mImGray.channels()==4)
-    {
+    } else if(mImGray.channels() == 4) { // CMYK(cyan, magenta, yellow, black) 등 4채널인 경우.
         if(mbRGB)
             cvtColor(mImGray,mImGray,CV_RGBA2GRAY);
         else
             cvtColor(mImGray,mImGray,CV_BGRA2GRAY);
     }
 
-    if (mSensor == System::MONOCULAR)
-    {
+
+    // 현재 프레임을 셋팅한다.
+    // 초기화 여부에 따라, mpIniORBextractor, mpORBextractorLeft
+    if (mSensor == System::MONOCULAR) {
         if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET ||(lastID - initID) < mMaxFrames)
             mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth);
         else
             mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth);
-    }
-    else if(mSensor == System::IMU_MONOCULAR)
-    {
-        if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET)
-        {
+    } else if(mSensor == System::IMU_MONOCULAR) {
+        if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET) {
             cout << "init extractor" << endl;
             mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth,&mLastFrame,*mpImuCalib);
-        }
-        else
+        } else {
             mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth,&mLastFrame,*mpImuCalib);
+        }
     }
 
     if (mState==NO_IMAGES_YET)
@@ -543,8 +544,10 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp,
 }
 
 
-void Tracking::GrabImuData(const IMU::Point &imuMeasurement)
-{
+/**
+ * Grab(붙잡다) imu data를 mlQueueImuData에 넣는다.
+ */
+void Tracking::GrabImuData(const IMU::Point &imuMeasurement) {
     unique_lock<mutex> lock(mMutexImuQueue);
     mlQueueImuData.push_back(imuMeasurement);
 }
@@ -2622,8 +2625,13 @@ void Tracking::UpdateLocalKeyFrames()
     }
 }
 
-bool Tracking::Relocalization()
-{
+/**
+ * tracking이 실패할 때, 카메라 relocating.
+ * ORB-SLAM은 ePnP 알고리즘 기반으로 Perspective-n-Points solver를 설정하여, 재조정 문제를 해결.
+ * 카메라 모델과 독립적이으로 작동하는 PnP 알고리즘이 필요하여, MLPnP(Maximum Likelihood Perspective-n-Point) 알고리즘을 사용.
+ */
+
+bool Tracking::Relocalization() {
     Verbose::PrintMess("Starting relocalization", Verbose::VERBOSITY_NORMAL);
     // Compute Bag of Words Vector
     mCurrentFrame.ComputeBoW();
@@ -2641,7 +2649,8 @@ bool Tracking::Relocalization()
 
     // We perform first an ORB matching with each candidate
     // If enough matches are found we setup a PnP solver
-    ORBmatcher matcher(0.75,true);
+    // matching 비율, check orientation
+    ORBmatcher matcher(0.75, true);
 
     vector<MLPnPsolver*> vpMLPnPsolvers;
     vpMLPnPsolvers.resize(nKFs);
@@ -2654,23 +2663,19 @@ bool Tracking::Relocalization()
 
     int nCandidates=0;
 
-    for(int i=0; i<nKFs; i++)
-    {
+    for(int i = 0; i < nKFs; i++) {
         KeyFrame* pKF = vpCandidateKFs[i];
-        if(pKF->isBad())
+        if(pKF->isBad()) {
             vbDiscarded[i] = true;
-        else
-        {
-            int nmatches = matcher.SearchByBoW(pKF,mCurrentFrame,vvpMapPointMatches[i]);
-            if(nmatches<15)
-            {
+        } else {
+            int nmatches = matcher.SearchByBoW(pKF, mCurrentFrame, vvpMapPointMatches[i]);
+            if(nmatches < 15) {
                 vbDiscarded[i] = true;
                 continue;
-            }
-            else
-            {
-                MLPnPsolver* pSolver = new MLPnPsolver(mCurrentFrame,vvpMapPointMatches[i]);
-                pSolver->SetRansacParameters(0.99,10,300,6,0.5,5.991);  //This solver needs at least 6 points
+            } else {
+                // matching point가 15개 이상이면 mlpnp solver를 실행한다.
+                MLPnPsolver* pSolver = new MLPnPsolver(mCurrentFrame, vvpMapPointMatches[i]);
+                pSolver->SetRansacParameters(0.99,10,300,6,0.5,5.991);  // This solver needs at least 6 points
                 vpMLPnPsolvers[i] = pSolver;
             }
         }
@@ -2678,13 +2683,12 @@ bool Tracking::Relocalization()
 
     // Alternatively perform some iterations of P4P RANSAC
     // Until we found a camera pose supported by enough inliers
+    // 충분한 inlier를 지원하는 카메라 포즈를 발견할 때 까지 P4P RANSAC의 이터레이션을 실행한다.
     bool bMatch = false;
     ORBmatcher matcher2(0.9,true);
 
-    while(nCandidates>0 && !bMatch)
-    {
-        for(int i=0; i<nKFs; i++)
-        {
+    while(nCandidates>0 && !bMatch) {
+        for(int i=0; i<nKFs; i++) {
             if(vbDiscarded[i])
                 continue;
 
@@ -2694,66 +2698,58 @@ bool Tracking::Relocalization()
             bool bNoMore;
 
             MLPnPsolver* pSolver = vpMLPnPsolvers[i];
-            cv::Mat Tcw = pSolver->iterate(5,bNoMore,vbInliers,nInliers);
+            cv::Mat Tcw = pSolver->iterate(5, bNoMore, vbInliers, nInliers);
 
             // If Ransac reachs max. iterations discard keyframe
-            if(bNoMore)
-            {
+            if(bNoMore) {
                 vbDiscarded[i]=true;
                 nCandidates--;
             }
 
             // If a Camera Pose is computed, optimize
-            if(!Tcw.empty())
-            {
+            if(!Tcw.empty()) {
                 Tcw.copyTo(mCurrentFrame.mTcw);
-
                 set<MapPoint*> sFound;
-
                 const int np = vbInliers.size();
 
-                for(int j=0; j<np; j++)
-                {
-                    if(vbInliers[j])
-                    {
+                for(int j = 0; j < np; j++) {
+                    if(vbInliers[j]) {
                         mCurrentFrame.mvpMapPoints[j]=vvpMapPointMatches[i][j];
                         sFound.insert(vvpMapPointMatches[i][j]);
-                    }
-                    else
+                    } else {
                         mCurrentFrame.mvpMapPoints[j]=NULL;
+                    }
                 }
 
                 int nGood = Optimizer::PoseOptimization(&mCurrentFrame);
 
-                if(nGood<10)
+                if(nGood < 10)
                     continue;
 
-                for(int io =0; io<mCurrentFrame.N; io++)
-                    if(mCurrentFrame.mvbOutlier[io])
+                for(int io = 0; io < mCurrentFrame.N; io++) {
+                    if(mCurrentFrame.mvbOutlier[io]) {
                         mCurrentFrame.mvpMapPoints[io]=static_cast<MapPoint*>(NULL);
+                    }
+                }
 
                 // If few inliers, search by projection in a coarse window and optimize again
-                if(nGood<50)
-                {
-                    int nadditional =matcher2.SearchByProjection(mCurrentFrame,vpCandidateKFs[i],sFound,10,100);
+                if(nGood < 50) {
+                    int nadditional =matcher2.SearchByProjection(mCurrentFrame, vpCandidateKFs[i], sFound, 10, 100);
 
-                    if(nadditional+nGood>=50)
-                    {
+                    if(nadditional + nGood >= 50) {
                         nGood = Optimizer::PoseOptimization(&mCurrentFrame);
 
                         // If many inliers but still not enough, search by projection again in a narrower window
                         // the camera has been already optimized with many points
-                        if(nGood>30 && nGood<50)
-                        {
+                        if(nGood > 30 && nGood < 50) {
                             sFound.clear();
-                            for(int ip =0; ip<mCurrentFrame.N; ip++)
+                            for(int ip = 0; ip < mCurrentFrame.N; ip++)
                                 if(mCurrentFrame.mvpMapPoints[ip])
                                     sFound.insert(mCurrentFrame.mvpMapPoints[ip]);
-                            nadditional =matcher2.SearchByProjection(mCurrentFrame,vpCandidateKFs[i],sFound,3,64);
+                            nadditional = matcher2.SearchByProjection(mCurrentFrame, vpCandidateKFs[i], sFound, 3, 64);
 
                             // Final optimization
-                            if(nGood+nadditional>=50)
-                            {
+                            if(nGood+nadditional >= 50) {
                                 nGood = Optimizer::PoseOptimization(&mCurrentFrame);
 
                                 for(int io =0; io<mCurrentFrame.N; io++)
@@ -2766,8 +2762,7 @@ bool Tracking::Relocalization()
 
 
                 // If the pose is supported by enough inliers stop ransacs and continue
-                if(nGood>=50)
-                {
+                if(nGood >= 50) {
                     bMatch = true;
                     break;
                 }
@@ -2775,17 +2770,13 @@ bool Tracking::Relocalization()
         }
     }
 
-    if(!bMatch)
-    {
+    if(!bMatch) {
         return false;
-    }
-    else
-    {
+    } else {
         mnLastRelocFrameId = mCurrentFrame.mnId;
         cout << "Relocalized!!" << endl;
         return true;
     }
-
 }
 
 void Tracking::Reset(bool bLocMap)

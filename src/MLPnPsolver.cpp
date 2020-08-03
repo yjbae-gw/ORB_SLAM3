@@ -49,7 +49,11 @@
 
 #include <Eigen/Sparse>
 
-
+/**
+ * MLPnP : Maximum Likelihood Perspective-n-Point
+ * 
+ * 
+ */ 
 namespace ORB_SLAM3 {
     MLPnPsolver::MLPnPsolver(const Frame &F, const vector<MapPoint *> &vpMapPointMatches):
             mnInliersi(0), mnIterations(0), mnBestInliers(0), N(0), mpCamera(F.mpCamera){
@@ -215,6 +219,15 @@ namespace ORB_SLAM3 {
 	    return cv::Mat();
 	}
 
+    /**
+     * probability
+     * minInliers
+     * maxIterations
+     * minSet
+     * epsilon
+     * th2
+     * 
+     */
 	void MLPnPsolver::SetRansacParameters(double probability, int minInliers, int maxIterations, int minSet, float epsilon, float th2){
 		mRansacProb = probability;
 	    mRansacMinInliers = minInliers;
