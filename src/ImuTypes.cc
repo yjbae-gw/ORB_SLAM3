@@ -251,36 +251,39 @@ void Preintegrated::Reintegrate()
     for(size_t i=0;i<aux.size();i++)
         IntegrateNewMeasurement(aux[i].a,aux[i].w,aux[i].t);
 }
-
-void Preintegrated::IntegrateNewMeasurement(const cv::Point3f &acceleration, const cv::Point3f &angVel, const float &dt)
-{
+/**
+ * acceleration : 가속도 x, y, z
+ * angVel : angle velocity x, y, z
+ * dt : 이전 frame과의 시간차
+ */
+void Preintegrated::IntegrateNewMeasurement(const cv::Point3f &acceleration, const cv::Point3f &angVel, const float &dt) {
     mvMeasurements.push_back(integrable(acceleration,angVel,dt));
 
     // Position is updated firstly, as it depends on previously computed velocity and rotation.
     // Velocity is updated secondly, as it depends on previously computed rotation.
     // Rotation is the last to be updated.
 
-    //Matrices to compute covariance
+    //Matrices to compute covariance(공분산)
     cv::Mat A = cv::Mat::eye(9,9,CV_32F);
     cv::Mat B = cv::Mat::zeros(9,6,CV_32F);
 
-    cv::Mat acc = (cv::Mat_<float>(3,1) << acceleration.x-b.bax,acceleration.y-b.bay, acceleration.z-b.baz);
-    cv::Mat accW = (cv::Mat_<float>(3,1) << angVel.x-b.bwx, angVel.y-b.bwy, angVel.z-b.bwz);
+    cv::Mat acc = (cv::Mat_<float>(3,1) << acceleration.x - b.bax, acceleration.y - b.bay, acceleration.z - b.baz);
+    cv::Mat accW = (cv::Mat_<float>(3,1) << angVel.x - b.bwx, angVel.y - b.bwy, angVel.z - b.bwz);
 
-    avgA = (dT*avgA + dR*acc*dt)/(dT+dt);
-    avgW = (dT*avgW + accW*dt)/(dT+dt);
+    avgA = (dT * avgA + dR * acc * dt) / (dT + dt);
+    avgW = (dT * avgW + accW * dt) / (dT + dt);
 
     // Update delta position dP and velocity dV (rely on no-updated delta rotation)
-    dP = dP + dV*dt + 0.5f*dR*acc*dt*dt;
-    dV = dV + dR*acc*dt;
+    dP = dP + dV * dt + 0.5f * dR * acc * dt * dt;
+    dV = dV + dR * acc * dt;
 
     // Compute velocity and position parts of matrices A and B (rely on non-updated delta rotation)
     cv::Mat Wacc = (cv::Mat_<float>(3,3) << 0, -acc.at<float>(2), acc.at<float>(1),
-                                                   acc.at<float>(2), 0, -acc.at<float>(0),
-                                                   -acc.at<float>(1), acc.at<float>(0), 0);
-    A.rowRange(3,6).colRange(0,3) = -dR*dt*Wacc;
-    A.rowRange(6,9).colRange(0,3) = -0.5f*dR*dt*dt*Wacc;
-    A.rowRange(6,9).colRange(3,6) = cv::Mat::eye(3,3,CV_32F)*dt;
+                                               acc.at<float>(2), 0, -acc.at<float>(0),
+                                               -acc.at<float>(1), acc.at<float>(0), 0);
+    A.rowRange(3,6).colRange(0,3) = -dR * dt * Wacc;
+    A.rowRange(6,9).colRange(0,3) = -0.5f * dR * dt * dt * Wacc;
+    A.rowRange(6,9).colRange(3,6) = cv::Mat::eye(3, 3, CV_32F) * dt;
     B.rowRange(3,6).colRange(3,6) = dR*dt;
     B.rowRange(6,9).colRange(3,6) = 0.5f*dR*dt*dt;
 

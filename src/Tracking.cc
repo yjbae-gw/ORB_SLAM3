@@ -338,8 +338,7 @@ void Tracking::SetViewer(Viewer *pViewer)
     mpViewer=pViewer;
 }
 
-void Tracking::SetStepByStep(bool bSet)
-{
+void Tracking::SetStepByStep(bool bSet) {
     bStepByStep = bSet;
 }
 
@@ -552,12 +551,14 @@ void Tracking::GrabImuData(const IMU::Point &imuMeasurement) {
     mlQueueImuData.push_back(imuMeasurement);
 }
 
-void Tracking::PreintegrateIMU()
-{
+
+/**
+ * IMU 측정value를 사전 통합한다.
+ */
+void Tracking::PreintegrateIMU() {
     //cout << "start preintegration" << endl;
 
-    if(!mCurrentFrame.mpPrevFrame)
-    {
+    if(!mCurrentFrame.mpPrevFrame) {
         Verbose::PrintMess("non prev frame ", Verbose::VERBOSITY_NORMAL);
         mCurrentFrame.setIntegrated();
         return;
@@ -567,39 +568,33 @@ void Tracking::PreintegrateIMU()
 
     mvImuFromLastFrame.clear();
     mvImuFromLastFrame.reserve(mlQueueImuData.size());
-    if(mlQueueImuData.size() == 0)
-    {
+    
+    //imu data가 없는 경우, setIntegrated()
+    if(mlQueueImuData.size() == 0) {
         Verbose::PrintMess("Not IMU data in mlQueueImuData!!", Verbose::VERBOSITY_NORMAL);
         mCurrentFrame.setIntegrated();
         return;
     }
 
-    while(true)
-    {
+    //mutex object : 스레드 사이에서 공유가 상호 배제되는 객체(사전)
+    while(true) {
         bool bSleep = false;
         {
             unique_lock<mutex> lock(mMutexImuQueue);
-            if(!mlQueueImuData.empty())
-            {
+            if(!mlQueueImuData.empty()) {
+
                 IMU::Point* m = &mlQueueImuData.front();
                 cout.precision(17);
-                if(m->t<mCurrentFrame.mpPrevFrame->mTimeStamp-0.001l)
-                {
+                if(m->t < mCurrentFrame.mpPrevFrame->mTimeStamp - 0.001l) {
                     mlQueueImuData.pop_front();
-                }
-                else if(m->t<mCurrentFrame.mTimeStamp-0.001l)
-                {
+                } else if(m->t < mCurrentFrame.mTimeStamp - 0.001l) {
                     mvImuFromLastFrame.push_back(*m);
                     mlQueueImuData.pop_front();
-                }
-                else
-                {
+                } else {
                     mvImuFromLastFrame.push_back(*m);
                     break;
                 }
-            }
-            else
-            {
+            } else {
                 break;
                 bSleep = true;
             }
@@ -609,41 +604,34 @@ void Tracking::PreintegrateIMU()
     }
 
 
-    const int n = mvImuFromLastFrame.size()-1;
+    const int n = mvImuFromLastFrame.size() - 1;
     IMU::Preintegrated* pImuPreintegratedFromLastFrame = new IMU::Preintegrated(mLastFrame.mImuBias,mCurrentFrame.mImuCalib);
 
-    for(int i=0; i<n; i++)
-    {
+    //acc(accelerometer, 가속도), angVel(angle velocity, 각속도), tstep(시간간격)을 구한다.
+    for(int i = 0; i < n; i++) {
         float tstep;
         cv::Point3f acc, angVel;
-        if((i==0) && (i<(n-1)))
-        {
-            float tab = mvImuFromLastFrame[i+1].t-mvImuFromLastFrame[i].t;
-            float tini = mvImuFromLastFrame[i].t-mCurrentFrame.mpPrevFrame->mTimeStamp;
-            acc = (mvImuFromLastFrame[i].a+mvImuFromLastFrame[i+1].a-
-                    (mvImuFromLastFrame[i+1].a-mvImuFromLastFrame[i].a)*(tini/tab))*0.5f;
-            angVel = (mvImuFromLastFrame[i].w+mvImuFromLastFrame[i+1].w-
-                    (mvImuFromLastFrame[i+1].w-mvImuFromLastFrame[i].w)*(tini/tab))*0.5f;
-            tstep = mvImuFromLastFrame[i+1].t-mCurrentFrame.mpPrevFrame->mTimeStamp;
-        }
-        else if(i<(n-1))
-        {
-            acc = (mvImuFromLastFrame[i].a+mvImuFromLastFrame[i+1].a)*0.5f;
-            angVel = (mvImuFromLastFrame[i].w+mvImuFromLastFrame[i+1].w)*0.5f;
-            tstep = mvImuFromLastFrame[i+1].t-mvImuFromLastFrame[i].t;
-        }
-        else if((i>0) && (i==(n-1)))
-        {
-            float tab = mvImuFromLastFrame[i+1].t-mvImuFromLastFrame[i].t;
-            float tend = mvImuFromLastFrame[i+1].t-mCurrentFrame.mTimeStamp;
-            acc = (mvImuFromLastFrame[i].a+mvImuFromLastFrame[i+1].a-
-                    (mvImuFromLastFrame[i+1].a-mvImuFromLastFrame[i].a)*(tend/tab))*0.5f;
-            angVel = (mvImuFromLastFrame[i].w+mvImuFromLastFrame[i+1].w-
-                    (mvImuFromLastFrame[i+1].w-mvImuFromLastFrame[i].w)*(tend/tab))*0.5f;
-            tstep = mCurrentFrame.mTimeStamp-mvImuFromLastFrame[i].t;
-        }
-        else if((i==0) && (i==(n-1)))
-        {
+        if((i == 0) && (i < (n - 1))) {
+            float tab = mvImuFromLastFrame[i+1].t - mvImuFromLastFrame[i].t;
+            float tini = mvImuFromLastFrame[i].t - mCurrentFrame.mpPrevFrame->mTimeStamp;
+            acc = (mvImuFromLastFrame[i].a + mvImuFromLastFrame[i+1].a -
+                    (mvImuFromLastFrame[i+1].a - mvImuFromLastFrame[i].a) * (tini / tab)) * 0.5f;
+            angVel = (mvImuFromLastFrame[i].w + mvImuFromLastFrame[i+1].w -
+                    (mvImuFromLastFrame[i+1].w - mvImuFromLastFrame[i].w) * (tini / tab)) * 0.5f;
+            tstep = mvImuFromLastFrame[i+1].t - mCurrentFrame.mpPrevFrame->mTimeStamp;
+        } else if(i < (n - 1)) {
+            acc = (mvImuFromLastFrame[i].a + mvImuFromLastFrame[i+1].a) * 0.5f;
+            angVel = (mvImuFromLastFrame[i].w + mvImuFromLastFrame[i+1].w) * 0.5f;
+            tstep = mvImuFromLastFrame[i+1].t - mvImuFromLastFrame[i].t;
+        } else if((i > 0) && (i == (n - 1))) {
+            float tab = mvImuFromLastFrame[i+1].t - mvImuFromLastFrame[i].t;
+            float tend = mvImuFromLastFrame[i+1].t - mCurrentFrame.mTimeStamp;
+            acc = (mvImuFromLastFrame[i].a + mvImuFromLastFrame[i+1].a -
+                    (mvImuFromLastFrame[i+1].a - mvImuFromLastFrame[i].a) * (tend / tab)) * 0.5f;
+            angVel = (mvImuFromLastFrame[i].w+mvImuFromLastFrame[i+1].w -
+                    (mvImuFromLastFrame[i+1].w - mvImuFromLastFrame[i].w) * (tend / tab)) * 0.5f;
+            tstep = mCurrentFrame.mTimeStamp - mvImuFromLastFrame[i].t;
+        } else if((i == 0) && (i == (n - 1))) {
             acc = mvImuFromLastFrame[i].a;
             angVel = mvImuFromLastFrame[i].w;
             tstep = mCurrentFrame.mTimeStamp-mCurrentFrame.mpPrevFrame->mTimeStamp;
@@ -651,20 +639,18 @@ void Tracking::PreintegrateIMU()
 
         if (!mpImuPreintegratedFromLastKF)
             cout << "mpImuPreintegratedFromLastKF does not exist" << endl;
-        mpImuPreintegratedFromLastKF->IntegrateNewMeasurement(acc,angVel,tstep);
-        pImuPreintegratedFromLastFrame->IntegrateNewMeasurement(acc,angVel,tstep);
+        mpImuPreintegratedFromLastKF->IntegrateNewMeasurement(acc, angVel, tstep);
+        pImuPreintegratedFromLastFrame->IntegrateNewMeasurement(acc, angVel, tstep);
     }
 
     mCurrentFrame.mpImuPreintegratedFrame = pImuPreintegratedFromLastFrame;
     mCurrentFrame.mpImuPreintegrated = mpImuPreintegratedFromLastKF;
     mCurrentFrame.mpLastKeyFrame = mpLastKeyFrame;
 
-    if(!mpLastKeyFrame)
-    {
+    if(!mpLastKeyFrame) {
         cout << "last KF is empty!" << endl;
     }
     mCurrentFrame.setIntegrated();
-
     Verbose::PrintMess("Preintegration is finished!! ", Verbose::VERBOSITY_DEBUG);
 }
 
@@ -829,8 +815,7 @@ void Tracking::ResetFrameIMU()
 }
 
 
-void Tracking::Track()
-{
+void Tracking::Track() {
 #ifdef SAVE_TIMES
     mTime_PreIntIMU = 0;
     mTime_PosePred = 0;
@@ -838,15 +823,14 @@ void Tracking::Track()
     mTime_NewKF_Dec = 0;
 #endif
 
-    if (bStepByStep)
-    {
+    // viewer에서 사용(단계별)
+    if (bStepByStep) {
         while(!mbStep)
             usleep(500);
         mbStep = false;
     }
 
-    if(mpLocalMapper->mbBadImu)
-    {
+    if(mpLocalMapper->mbBadImu) { //local mapper에서 설정
         cout << "TRACK: Reset map because local mapper set the bad imu flag " << endl;
         mpSystem->ResetActiveMap();
         return;
@@ -854,37 +838,32 @@ void Tracking::Track()
 
     Map* pCurrentMap = mpAtlas->GetCurrentMap();
 
-    if(mState!=NO_IMAGES_YET)
-    {
-        if(mLastFrame.mTimeStamp>mCurrentFrame.mTimeStamp)
-        {
+    if(mState != NO_IMAGES_YET) {
+        //이전 frame time이 현재 frame time보다 늦을 때. (잘못된 경우)
+        if(mLastFrame.mTimeStamp > mCurrentFrame.mTimeStamp) {
             cerr << "ERROR: Frame with a timestamp older than previous frame detected!" << endl;
+
             unique_lock<mutex> lock(mMutexImuQueue);
             mlQueueImuData.clear();
             CreateMapInAtlas();
             return;
-        }
-        else if(mCurrentFrame.mTimeStamp>mLastFrame.mTimeStamp+1.0)
-        {
+        } else if(mCurrentFrame.mTimeStamp > mLastFrame.mTimeStamp + 1.0) {
             cout << "id last: " << mLastFrame.mnId << "    id curr: " << mCurrentFrame.mnId << endl;
-            if(mpAtlas->isInertial())
-            {
 
-                if(mpAtlas->isImuInitialized())
-                {
+            if(mpAtlas->isInertial()) {
+                
+                //IMUr가 초기화 되어 있다면,
+                if(mpAtlas->isImuInitialized()) {
                     cout << "Timestamp jump detected. State set to LOST. Reseting IMU integration..." << endl;
-                    if(!pCurrentMap->GetIniertialBA2())
-                    {
+                    
+                    if(!pCurrentMap->GetIniertialBA2()) {
                         mpSystem->ResetActiveMap();
-                    }
-                    else
-                    {
+                    } else {
                         CreateMapInAtlas();
                     }
-                }
-                else
-                {
+                } else {
                     cout << "Timestamp jump detected, before IMU initialization. Reseting..." << endl;
+
                     mpSystem->ResetActiveMap();
                 }
             }
@@ -893,19 +872,18 @@ void Tracking::Track()
         }
     }
 
-
-    if ((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO) && mpLastKeyFrame)
+    //IMU bias set
+    if ((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO) && mpLastKeyFrame) {
         mCurrentFrame.SetNewBias(mpLastKeyFrame->GetImuBias());
+    }
 
-    if(mState==NO_IMAGES_YET)
-    {
+    if(mState==NO_IMAGES_YET) {
         mState = NOT_INITIALIZED;
     }
 
     mLastProcessedState=mState;
 
-    if ((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO) && !mbCreatedMap)
-    {
+    if ((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO) && !mbCreatedMap) {
 #ifdef SAVE_TIMES
         std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
 #endif
@@ -915,9 +893,8 @@ void Tracking::Track()
 
         mTime_PreIntIMU = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t1 - t0).count();
 #endif
-
-
     }
+
     mbCreatedMap = false;
 
     // Get Map Mutex -> Map cannot be changed
